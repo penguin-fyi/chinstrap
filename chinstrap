@@ -1,0 +1,415 @@
+#!/usr/bin/env zsh
+
+# load modules
+zmodload zsh/zutil
+zmodload zsh/mapfile
+autoload colors; colors
+
+# load config file
+() {
+  for rc in $(pwd)/.chinstraprc $HOME/.chinstraprc /etc/chinstraprc 
+  do; [[ -f $rc ]] && { source $rc && break }; done
+}
+
+# setup environment
+typeset temp_dir=${temp_dir:=$(mktemp -d /tmp/chinstrap.XXX)}
+typeset working_dir=${working_dir:=$(pwd)}
+typeset chroot_dir=${chroot_dir:="/var/lib/archbuild/penguin/"}
+typeset pacman_conf=${pacman_conf:="/usr/share/devtools/pacman-penguin.conf"}
+typeset makepkg_conf=${makepkg_conf:="/usr/share/devtools/makepkg-penguin.conf"}
+typeset aur_url=${aur_url:="https://aur.archlinux.org"}
+typeset aur_list=${aur_list:="packages.gz"}
+typeset gpg_key=${gpg_key:="1234567890ABCDEF"}
+typeset push_login=${push_login:="user@host.domain.url"}
+typeset push_path=${push_path:="/srv/http/repo/penguin/x86_64"}
+typeset push_auto=${push_auto:-false}
+
+# is_package() - check if path contains PKGBUILD
+function is_package () {
+  [[ -f $1/PKGBUILD ]] || return 1
+}
+
+# is_built() - check if path contains built package
+function is_built () {
+  cd $1 || return 1
+  [[ -f $(makepkg --packagelist) ]] || return 2
+  cd $working_dir || return 1
+}
+
+# is_git() - check if path is git repo
+function is_git () {
+  [[ -d $1/.git ]] || return 1
+}
+
+# is_dirty() - check if path is dirty git repo
+function is_dirty () {
+  is_git $1 || return 1
+
+  cd $1 || return 1
+  [[ "$(git status -s | wc -l)" ]] || return 2
+
+  cd $working_dir || return 1
+}
+
+# list() - list packages in $working_dir
+# args (only one):
+#   -b  --built   filter built packages
+#   -d  --dirty   filter dirty packages
+#   -g  --git     filter git packages
+function list () {
+
+  # parse flags and remove from args
+  zparseopts -D -E -F - \
+    g=filter -git=filter \
+    b=filter -built=filter \
+    d=filter -dirty=filter \
+    || return 1
+  local end_opts=$@[(i)(--|-)]
+  set -- "${@[0,end_opts-1]}" "${@[end_opts+1,-1]}"
+
+  # no other arguments
+  test -z $@ || { usage; return 1 }
+
+  cd $working_dir || return 1
+  echo_msg "Listing packages in $working_dir..."
+
+  # get initial list
+  local -a dir_list
+  for dir in $(ls $working_dir)
+  do
+    is_package $dir \
+      && dir_list=($dir_list $dir)
+  done
+
+  # filter list
+  if [[ $filter != '' ]]
+  then
+    echo_inf "Filter: $filter"
+    local -a filter_list
+    for dir in $dir_list
+    do
+      case $filter in 
+        -g | --git )
+            is_git $working_dir/$dir \
+              && filter_list=($filter_list $dir)
+          ;;
+        -b | --built )
+            is_built $working_dir/$dir \
+              && filter_list=($filter_list $dir)
+          ;;
+        -d | --dirty )
+            is_dirty $working_dir/$dir \
+              && filter_list=($filter_list $dir)
+          ;;
+      esac
+    done
+
+    dir_list=($filter_list)
+  fi
+
+  # print results
+  for dir in $dir_list
+  do
+    echo_itm "$dir"
+  done
+}
+
+# fetch() - fetch PKGBUILD(s)
+# args:
+#   <pkg> [<pkg>]       packages to fetch
+#   -l | --list <file>  list of packages to fetch
+function fetch () {
+  [[ -n $@ ]] || { usage; return 1 }
+
+  # parse flags and remove from args
+  zparseopts -D -E -F - l:=list -list:=list || return 1
+  local end_opts=$@[(i)(--|-)]
+  set -- "${@[0,end_opts-1]}" "${@[end_opts+1,-1]}"
+  
+  # packages from args
+  local -aU pkgs=($@)
+
+  # fetach AUR package list
+  echo_msg "Fetching AUR $aur_list..."
+  local src="$aur_url/$aur_list"
+  curl -Ss $src -o $temp_dir/$aur_list \
+    || { echo_err "$aur_list sync failed"; return 1 }
+
+  # packages from list
+  local pkglist=$list[-1]
+  if [[ -f $pkglist ]]
+  then
+    for line in ${(f)mapfile[$pkglist]}
+    do
+      read first _ <<< "$line"
+      [[ ! $first == '#'* ]] && pkgs=($pkgs $first)
+    done
+  fi
+  
+  cd $working_dir || return 1
+
+  # clone packages
+  echo_msg "Fetching PKGBUILD(s)..."
+
+  for pkg in $pkgs
+  do
+    if zgrep -qw "^${pkg}$" "$temp_dir/$aur_list"
+    then
+      if [[ ! -d $pkg ]]
+      then
+        git clone --quiet $aur_url/$pkg \
+          && echo_itm "Found $pkg" \
+          || echo_err "$pkg sync failed"
+      else
+        echo_wrn "$pkg exists"
+      fi
+    else
+      echo_err "$pkg unavailable"
+    fi
+  done
+
+  rm -rf $temp_dir || { echo_wrn "Failed to remove $temp_dir"; return 1 }
+}
+
+# prepare() - prepare PKGBUILD(s) for building
+function prepare() {
+  local pkg=$1
+  echo_msg "Preparing $pkg..."
+
+  if is_package $pkg
+  then
+    cd $pkg || return 1
+    prepare_git
+    prepare_checksums
+    prepare_srcinfo
+    cd $working_dir || return 1
+
+  else
+    echo_err "$pkg invalid path"
+    return 1
+  fi
+}
+
+function prepare_git () {
+  is_git . || return 1
+  echo_msg "Updating PKGBUILD..."
+  git pull --quiet \
+    || echo_err "Failed to update PKGBUILD"
+}
+
+function prepare_checksums () {
+  echo_msg "Updating checksums..."
+  updpkgsums \
+    || echo_err "Failed to update checksums"
+}
+
+function prepare_srcinfo () {
+  echo_msg "Updating .SRCINFO..."
+  makepkg --printsrcinfo >! .SRCINFO \
+     || echo_err "Failed to update .SRCINFO"
+}
+
+#
+function create_chroot () {
+
+  [[ -d $chroot_dir ]] \
+    || { mkdir -p $chroot_dir || sudo mkdir -p $chroot_dir }
+
+  local dest=$chroot_dir/root
+  if [[ ! -d $dest ]]
+  then
+    mkarchroot \
+      -C $pacman_conf \
+      -M $makepkg_conf \
+      $dest base-devel \
+      || exit 2
+  fi
+}
+
+# update_chroot -
+function update_chroot () {
+  [[ -d $chroot_dir ]] \
+    || { echo_err "Invalid chroot_dir: $chroot_dir"; exit 1 }
+
+  echo_inf "Updating chroot environment..."
+  arch-nspawn $chroot_dir/root pacman -Syu --noconfirm \
+    || exit 2
+}
+
+function build_pkg () {
+  local pkg=$1
+
+  cd $pkg || return 1
+
+  echo_msg "Building $pkg"
+  makechrootpkg -c -r $chroot_dir -- \
+    --noconfirm \
+    --syncdeps \
+    --holdver \
+    --skipinteg \
+    --clean \
+    --log \
+    || exit 2
+
+  sign_pkg
+
+  cd .. || retrun 1
+}
+
+function sign_pkg () {
+  local pkg=$(makepkg --packagelist)
+  gpg --detach-sign --quiet $pkg \
+    || { echo_err "failed to"}
+}
+
+# build packages
+function build () {
+  [[ -n $@ ]] || { usage; return 1 }
+
+  # parse flags and remove from args
+  zparseopts -D -E -F - l:=list -list:=list || return 1
+  local end_opts=$@[(i)(--|-)]
+  set -- "${@[0,end_opts-1]}" "${@[end_opts+1,-1]}"
+  
+  cd $working_dir || return 1
+
+  # packages from args
+  local -aU pkgs=($@)
+
+  # packages from list
+  local pkglist=$list[-1]
+  if [[ -f $pkglist ]]
+  then
+    for line in ${(f)mapfile[$pkglist]}
+    do
+      read first _ <<< "$line"
+      [[ ! $first == '#'* ]] && pkgs=($pkgs $first)
+    done
+  fi
+
+  # build packages
+  for pkg in $pkgs
+  do
+    if is_package $pkg
+    then
+      update_chroot
+      prepare $pkg
+      build_pkg $pkg
+
+      [[ $push_auto = true ]] \
+        && upload_pkg $pkg
+    else
+      echo_err "$pkg not found"
+    fi
+  done
+}
+
+# upload package(s) to repo
+function upload_pkg () {
+  cd $1 || return 1
+
+  for pkg in $(makepkg --packagelist)
+  do 
+    rsync -av $pkg $pkg.sig $push_login:$push_path \
+      || { echo_err "Failed to sync remote repo!"; exit 2 }
+  done
+
+  cd $working_dir || return 1
+}
+
+# push() - upload packages
+function push () {
+  [[ -n $@ ]] || { usage; return 1 }
+
+  # parse flags and remove from args
+  zparseopts -D -E -F - l:=list -list:=list || return 1
+  local end_opts=$@[(i)(--|-)]
+  set -- "${@[0,end_opts-1]}" "${@[end_opts+1,-1]}"
+  
+  cd $working_dir || return 1
+
+  # packages from args
+  local -aU pkgs=($@)
+
+  # packages from list
+  local pkglist=$list[-1]
+  if [[ -f $pkglist ]]
+  then
+    for line in ${(f)mapfile[$pkglist]}
+    do
+      read first _ <<< "$line"
+      [[ ! $first == '#'* ]] \
+        && pkgs=($pkgs $first)
+    done
+  fi
+
+  for pkg in $pkgs
+  do
+    if is_built $pkg
+    then
+      echo_msg "Pushing $pkg to remote..."
+      upload_pkg $pkg
+    else
+      echo_err "$pkg not found"
+    fi
+  done
+}
+
+# setup() - setup chinstrap
+function setup () {
+  [[ -n $@ ]] || { usage; return 1 }
+
+  # parse flags and remove from args
+  zparseopts -D -E -F - C=mode -chroot=mode || return 1
+  local end_opts=$@[(i)(--|-)]
+  set -- "${@[0,end_opts-1]}" "${@[end_opts+1,-1]}"
+  
+  cd $working_dir || return 1
+
+  case $mode in 
+    -C | --chroot ) create_chroot ;;
+    -U | --update ) update_chroot ;;
+    * ) echo "Invalid mode: $mode"; exit 1 ;;
+  esac
+}
+
+# yes or no dialog
+function confirm() {
+  vared -cp "Confirm (y/N)? " ans
+  [[ "$ans" =~ ^[Yy]$ ]] || return 1
+}
+
+# print colorized output
+function echo_inf () { echo "${fg_bold[green]}==> ${fg_bold[white]}${@}${reset_color}" }
+function echo_msg () { echo "${fg_bold[blue]}:: ${fg_bold[white]}${@}${reset_color}" }
+function echo_itm () { echo "${fg_bold[blue]}  -> ${fg_bold[white]}${@}${reset_color}" }
+function echo_wrn () { echo "${fg_bold[yellow]}==> WARNING: ${fg_bold[white]}${@}${reset_color}" }
+function echo_err () { echo "${fg_bold[red]}==> ERROR: ${fg_bold[white]}${@}${reset_color}" }
+
+# help
+function usage() {
+  echo "Usage: ${ZSH_ARGZERO:t} <mode> <pkg> [--list <file>]"
+  echo
+  echo "  modes: (one required)"
+  echo "    list                  list available packages"
+  echo "    fetch <pkg(s)>        fetch package(s)"
+  echo "    build <pkg(s)>        build package(s)"
+  echo "    push  <pkg(s)>        push package(s) to repo"
+  echo
+  echo "  global arguments: (optional)"
+  echo "      -l, --list  <file>  list of packages to work on"
+  echo
+}
+
+function main ()
+{
+  local mode=${@[1]}
+  local args=(${@[2,-1]})
+
+  case "$mode" in
+    fetch | build | list | push | setup ) $mode $args ;;
+    -h | --help | ? | * ) usage ;;
+  esac
+}
+
+main "$@" || exit 1

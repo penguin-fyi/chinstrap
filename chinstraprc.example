@@ -1,0 +1,34 @@
+# chinstrap configuration
+
+## directory containing pkgbuilds
+#working_dir="$HOME/pkgbuilds"
+
+## directory containing chroot
+#chroot_dir="$working_dir/build_chroot"
+
+## custom pacman.conf
+#pacman_conf="$working_dir/configs/pacman.conf"
+
+## custom makepkg.conf
+#makepkg_conf="$working_dir/configs/makepkg.conf"
+
+## directory to cache temporary files (will be removed)
+#temp_dir="/tmp/chinstrap"
+
+## base url to AUR
+#aur_url="https://aur.archlinux.org"
+
+## AUR package list
+#aur_list="packages.gz"
+
+## GPG key to sign packages (required)
+#gpg_key="1234567890ABCDEF"
+
+## login on remote host
+#push_login="user@host.domain.url"
+
+## path on remote host
+#push_path="/srv/http/repo/penguin/x86_64"
+
+## auto push on build
+#push_auto=true
