@@ -1,5 +1,9 @@
 #!/usr/bin/env zsh
 
+##
+## chinstrap build tool
+##
+
 # load modules
 zmodload zsh/zutil
 zmodload zsh/mapfile
@@ -24,9 +28,13 @@ typeset push_login=${push_login:="user@host.domain.url"}
 typeset push_path=${push_path:="/srv/http/repo/penguin/x86_64"}
 typeset push_auto=${push_auto:-false}
 
+##
+## HELPER FUNCTIONS
+##
+
 # is_package() - check if path contains PKGBUILD
 function is_package () {
-  [[ -f $1/PKGBUILD ]] || return 1
+  [[ -f $1/PKGBUILD ]] || return 2
 }
 
 # is_built() - check if path contains built package
@@ -38,7 +46,7 @@ function is_built () {
 
 # is_git() - check if path is git repo
 function is_git () {
-  [[ -d $1/.git ]] || return 1
+  [[ -d $1/.git ]] || return 2
 }
 
 # is_dirty() - check if path is dirty git repo
@@ -50,6 +58,81 @@ function is_dirty () {
 
   cd $working_dir || return 1
 }
+
+# print colorized output
+function echo_msg () { echo "${fg_bold[blue]}:: ${fg_bold[white]}${@}${reset_color}" }
+function echo_itm () { echo "${fg_bold[blue]}  -> ${fg_bold[white]}${@}${reset_color}" }
+function echo_inf () { echo "${fg_bold[green]}==> ${fg_bold[white]}${@}${reset_color}" }
+function echo_wrn () { echo "${fg_bold[yellow]}==> WARNING: ${fg_bold[white]}${@}${reset_color}" }
+function echo_err () { echo "${fg_bold[red]}==> ERROR: ${fg_bold[white]}${@}${reset_color}" }
+
+# help
+function usage() {
+  echo "Usage: ${ZSH_ARGZERO:t} <mode> <pkg> [--list <file>]"
+  echo
+  echo "  modes: (one required)"
+  echo "    setup                 manage chroot"
+  echo "    list                  list available packages"
+  echo "    fetch <pkg(s)>        fetch package(s)"
+  echo "    build <pkg(s)>        build package(s)"
+  echo "    push  <pkg(s)>        push package(s) to repo"
+  echo
+  echo "  global arguments: (optional)"
+  echo "      -l, --list  <file>  list of packages to work on"
+  echo
+}
+
+##
+## SETUP MODE
+##
+
+# setup() - setup chinstrap
+# args (only one):
+#   -C  --chroot  initialize chroot
+#   -U  --update  update chroot
+function setup () {
+  [[ -n $@ ]] || { usage; return 1 }
+
+  # parse flags and remove from args
+  zparseopts -D -E -F - C=mode -chroot=mode || return 1
+  local end_opts=$@[(i)(--|-)]
+  set -- "${@[0,end_opts-1]}" "${@[end_opts+1,-1]}"
+  
+  cd $working_dir || return 1
+
+  case $mode in 
+    -C | --chroot ) create_chroot ;;
+    -U | --update ) update_chroot ;;
+    * ) echo "Invalid mode: $mode"; exit 1 ;;
+  esac
+}
+
+# create_chroot() - initialize chroot environment
+function create_chroot () {
+  [[ -d $chroot_dir ]] \
+    || { mkdir -p $chroot_dir || sudo mkdir -p $chroot_dir }
+
+  local dest=$chroot_dir/root
+  if [[ ! -d $dest ]]
+  then
+    mkarchroot \
+      -C $pacman_conf \
+      -M $makepkg_conf \
+      $dest base-devel \
+      || exit 2
+  fi
+}
+
+# update_chroot() - update packages of chroot environment
+function update_chroot () {
+  [[ -d $chroot_dir ]] \
+    || { echo_err "Invalid chroot_dir: $chroot_dir"; exit 1 }
+
+  echo_msg "Updating chroot environment..."
+  arch-nspawn $chroot_dir/root pacman -Syu --noconfirm \
+    || exit 2
+}
+
 
 # list() - list packages in $working_dir
 # args (only one):
@@ -133,7 +216,7 @@ function fetch () {
   echo_msg "Fetching AUR $aur_list..."
   local src="$aur_url/$aur_list"
   curl -Ss $src -o $temp_dir/$aur_list \
-    || { echo_err "$aur_list sync failed"; return 1 }
+    || { echo_err "$aur_list sync failed!"; return 1 }
 
   # packages from list
   local pkglist=$list[-1]
@@ -164,105 +247,21 @@ function fetch () {
         echo_wrn "$pkg exists"
       fi
     else
-      echo_err "$pkg unavailable"
+      echo_wrn "$pkg unavailable"
     fi
   done
 
-  rm -rf $temp_dir || { echo_wrn "Failed to remove $temp_dir"; return 1 }
+  rm -rf $temp_dir || { echo_err "Failed to remove $temp_dir"; return 1 }
 }
 
-# prepare() - prepare PKGBUILD(s) for building
-function prepare() {
-  local pkg=$1
-  echo_msg "Preparing $pkg..."
+##
+## BUILD MODE
+##
 
-  if is_package $pkg
-  then
-    cd $pkg || return 1
-    prepare_git
-    prepare_checksums
-    prepare_srcinfo
-    cd $working_dir || return 1
-
-  else
-    echo_err "$pkg invalid path"
-    return 1
-  fi
-}
-
-function prepare_git () {
-  is_git . || return 1
-  echo_msg "Updating PKGBUILD..."
-  git pull --quiet \
-    || echo_err "Failed to update PKGBUILD"
-}
-
-function prepare_checksums () {
-  echo_msg "Updating checksums..."
-  updpkgsums \
-    || echo_err "Failed to update checksums"
-}
-
-function prepare_srcinfo () {
-  echo_msg "Updating .SRCINFO..."
-  makepkg --printsrcinfo >! .SRCINFO \
-     || echo_err "Failed to update .SRCINFO"
-}
-
-#
-function create_chroot () {
-
-  [[ -d $chroot_dir ]] \
-    || { mkdir -p $chroot_dir || sudo mkdir -p $chroot_dir }
-
-  local dest=$chroot_dir/root
-  if [[ ! -d $dest ]]
-  then
-    mkarchroot \
-      -C $pacman_conf \
-      -M $makepkg_conf \
-      $dest base-devel \
-      || exit 2
-  fi
-}
-
-# update_chroot -
-function update_chroot () {
-  [[ -d $chroot_dir ]] \
-    || { echo_err "Invalid chroot_dir: $chroot_dir"; exit 1 }
-
-  echo_inf "Updating chroot environment..."
-  arch-nspawn $chroot_dir/root pacman -Syu --noconfirm \
-    || exit 2
-}
-
-function build_pkg () {
-  local pkg=$1
-
-  cd $pkg || return 1
-
-  echo_msg "Building $pkg"
-  makechrootpkg -c -r $chroot_dir -- \
-    --noconfirm \
-    --syncdeps \
-    --holdver \
-    --skipinteg \
-    --clean \
-    --log \
-    || exit 2
-
-  sign_pkg
-
-  cd .. || retrun 1
-}
-
-function sign_pkg () {
-  local pkg=$(makepkg --packagelist)
-  gpg --detach-sign --quiet $pkg \
-    || { echo_err "failed to"}
-}
-
-# build packages
+# build() - build PKGBUILD(s)
+# args:
+#   <pkg> [<pkg>]       packages to build
+#   -l | --list <file>  list of packages to build
 function build () {
   [[ -n $@ ]] || { usage; return 1 }
 
@@ -299,27 +298,91 @@ function build () {
       [[ $push_auto = true ]] \
         && upload_pkg $pkg
     else
-      echo_err "$pkg not found"
+      echo_err "$pkg not found!"
     fi
   done
 }
 
-# upload package(s) to repo
-function upload_pkg () {
-  cd $1 || return 1
+# prepare() - prepare PKGBUILD(s) for building
+function prepare() {
+  local pkg=$1
+  echo_msg "Preparing $pkg..."
 
-  for pkg in $(makepkg --packagelist)
-  do 
-    rsync -av $pkg $pkg.sig $push_login:$push_path \
-      || { echo_err "Failed to sync remote repo!"; exit 2 }
-  done
+  if is_package $pkg
+  then
+    cd $pkg || return 1
+    prepare_git
+    prepare_checksums
+    prepare_srcinfo
+    cd $working_dir || return 1
 
-  cd $working_dir || return 1
+  else
+    echo_err "Invalid path: $pkg"
+    return 1
+  fi
 }
 
-# push() - upload packages
+# prepare_git() - pull latest version of PKGBUILD
+function prepare_git () {
+  is_git . || return 1
+  echo_msg "Updating PKGBUILD..."
+  git pull --quiet \
+    || { echo_err "Failed to update PKGBUILD"; return 2 }
+}
+
+# prepare_checksums() - update source checksums
+function prepare_checksums () {
+  echo_msg "Updating checksums..."
+  updpkgsums \
+    || { echo_err "Failed to update checksums"; return 2 }
+}
+
+# prepare_srcinfo() - update .SRCINFO file
+function prepare_srcinfo () {
+  echo_msg "Updating .SRCINFO..."
+  makepkg --printsrcinfo >! .SRCINFO \
+     || { echo_err "Failed to update .SRCINFO"; return 2 }
+}
+
+# build_pkg() - build individual package
+build_pkg()
+function build_pkg () {
+  local pkg=$1
+
+  cd $pkg || return 1
+
+  echo_inf "Building $pkg..."
+  makechrootpkg -c -r $chroot_dir -- \
+    --noconfirm \
+    --syncdeps \
+    --holdver \
+    --skipinteg \
+    --clean \
+    --log \
+    || return 2
+
+  sign_pkg
+
+  cd .. || retrun 1
+}
+
+# sign_pkg() - crate detached sig for pkg
+function sign_pkg () {
+  local pkg=$(makepkg --packagelist)
+  gpg --detach-sign --quiet $pkg \
+    || { echo_err "Failed to sign package: $pkg"; return 2 }
+}
+
+##
+## PUSH MODE
+##
+
+# push() - push package(s)
+# args:
+#   <pkg> [<pkg>]       packages to push
+#   -l | --list <file>  list of packages to push
 function push () {
-  [[ -n $@ ]] || { usage; return 1 }
+  [[ -n $@ ]] || { usage; exit 1 }
 
   # parse flags and remove from args
   zparseopts -D -E -F - l:=list -list:=list || return 1
@@ -350,57 +413,27 @@ function push () {
       echo_msg "Pushing $pkg to remote..."
       upload_pkg $pkg
     else
-      echo_err "$pkg not found"
+      echo_err "$pkg not found!"
     fi
   done
 }
 
-# setup() - setup chinstrap
-function setup () {
-  [[ -n $@ ]] || { usage; return 1 }
+# upload_pkg() - upload package(s) to repo
+function upload_pkg () {
+  cd $1 || return 1
 
-  # parse flags and remove from args
-  zparseopts -D -E -F - C=mode -chroot=mode || return 1
-  local end_opts=$@[(i)(--|-)]
-  set -- "${@[0,end_opts-1]}" "${@[end_opts+1,-1]}"
-  
+  for pkg in $(makepkg --packagelist)
+  do 
+    rsync -av $pkg $pkg.sig $push_login:$push_path \
+      || { echo_err "Failed to sync: $pkg" }
+  done
+
   cd $working_dir || return 1
-
-  case $mode in 
-    -C | --chroot ) create_chroot ;;
-    -U | --update ) update_chroot ;;
-    * ) echo "Invalid mode: $mode"; exit 1 ;;
-  esac
 }
 
-# yes or no dialog
-function confirm() {
-  vared -cp "Confirm (y/N)? " ans
-  [[ "$ans" =~ ^[Yy]$ ]] || return 1
-}
-
-# print colorized output
-function echo_inf () { echo "${fg_bold[green]}==> ${fg_bold[white]}${@}${reset_color}" }
-function echo_msg () { echo "${fg_bold[blue]}:: ${fg_bold[white]}${@}${reset_color}" }
-function echo_itm () { echo "${fg_bold[blue]}  -> ${fg_bold[white]}${@}${reset_color}" }
-function echo_wrn () { echo "${fg_bold[yellow]}==> WARNING: ${fg_bold[white]}${@}${reset_color}" }
-function echo_err () { echo "${fg_bold[red]}==> ERROR: ${fg_bold[white]}${@}${reset_color}" }
-
-# help
-function usage() {
-  echo "Usage: ${ZSH_ARGZERO:t} <mode> <pkg> [--list <file>]"
-  echo
-  echo "  modes: (one required)"
-  echo "    list                  list available packages"
-  echo "    fetch <pkg(s)>        fetch package(s)"
-  echo "    build <pkg(s)>        build package(s)"
-  echo "    push  <pkg(s)>        push package(s) to repo"
-  echo
-  echo "  global arguments: (optional)"
-  echo "      -l, --list  <file>  list of packages to work on"
-  echo
-}
-
+##
+## main()
+##
 function main ()
 {
   local mode=${@[1]}
