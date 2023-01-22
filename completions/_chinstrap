@@ -1,0 +1,79 @@
+#compdef chinstrap
+
+# zsh completions for chinstrap
+# https://github.com/penguin-fyi/chinstrap
+
+_chinstrap_commands() {
+  local _commands=(
+    "env:Manage chroot environment"
+    "list:List available packages"
+    "clone:Clone package(s) from AUR"
+    "make:Build package(s)"
+    "sync:Sync packages(s) to repo"
+  )
+
+  _describe 'chinstrap commands' _commands
+}
+
+_chinstrap_global_options=()
+
+_chinstrap_options=(
+  "(-)"{-h,--help}"[Show help message]"
+)
+
+_chinstrap_env=(
+  {-C,--chroot-dir}"[Path to \$chroot_dir]:CDIR:_files -/"
+  {-m,--makepkg}"[Path to makepkg config]:File:_files"
+  {-p,--pacman}"[Path to pacman config]:File:_files"
+  "--create[Create chroot environment]"
+  "--update[Update chroot environment]"
+  "--remove[Remove chroot environment]"
+)
+
+_chinstrap_list=(
+  {-B,--build-dir}"[Path to \$build_dir]:BDIR:_files -/"
+  {-a,--aur}"[Filter AUR packages (slow)]"
+  {-b,--built}"[Filter built packages (very slow)]"
+  {-g,--git}"[Filter git packages]"
+)
+
+_chinstrap_clone=(
+  {-B,--build-dir}"[Path to \$build_dir]:BDIR:_files -/"
+  {-l,--pkg-list}"[Path to package list]:File:_files"
+  "*:Packages:"
+)
+
+_chinstrap_make=(
+  {-C,--chroot-dir}"[Path to \$chroot_dir]:CDIR:_files -/"
+  {-B,--build-dir}"[Path to \$build_dir]:BDIR:_files -/"
+  {-R,--repo-dir}"[Path to package repo]:Remote directory:"
+  {-k,--gpg-key}"[GPG key used to sign package(s)]:Key:"
+  {-l,--pkg-list}"[Path to package list]:List:_files"
+  "--login[Login for repo (user@host)]:Login:"
+  "--sync[Automatically sync package(s)]"
+  "*:Packages:_files -/"
+)
+
+_chinstrap_sync=(
+  {-B,--build-dir}"[Path to \$build_dir]:BDIR:_files -/"
+  {-R,--repo-dir}"[Path to package repo]:Remote directory:"
+  {-l,--pkg-list}"[Path to package list]:File:_files"
+  "--login[Login for repo (user@host)]:Login:"
+  "*:Packages:_files -/"
+)
+
+typeset -A opt_args
+local context state line curcontext="$curcontext"
+
+_arguments \
+  $_chinstrap_options \
+  '1: :_chinstrap_commands' \
+  '*::args:->args'
+
+case $words[1] in
+  env) _arguments $_chinstrap_global_options $_chinstrap_env ;;
+  list) _arguments $_chinstrap_global_options $_chinstrap_list ;;
+  clone) _arguments $_chinstrap_global_options $_chinstrap_clone ;;
+  make) _arguments $_chinstrap_global_options $_chinstrap_make ;;
+  sync) _arguments $_chinstrap_global_options $_chinstrap_sync ;;
+esac
