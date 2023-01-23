@@ -325,21 +325,21 @@ function prepare() {
 # prepare_git() - pull latest version of PKGBUILD
 function prepare_git () {
   is_git . || return 1
-  echo_msg "Updating PKGBUILD..."
+  echo_itm "Updating PKGBUILD..."
   git pull --quiet \
     || { echo_err "Failed to update PKGBUILD"; return 2 }
 }
 
 # prepare_checksums() - update source checksums
 function prepare_checksums () {
-  echo_msg "Updating checksums..."
+  echo_itm "Updating checksums..."
   updpkgsums \
     || { echo_err "Failed to update checksums"; return 2 }
 }
 
 # prepare_srcinfo() - update .SRCINFO file
 function prepare_srcinfo () {
-  echo_msg "Updating .SRCINFO..."
+  echo_itm "Updating .SRCINFO..."
   makepkg --printsrcinfo >! .SRCINFO \
      || { echo_err "Failed to update .SRCINFO"; return 2 }
 }
@@ -352,13 +352,7 @@ function build_pkg () {
   cd $pkg || return 1
 
   echo_inf "Building $pkg..."
-  makechrootpkg -c -r $chroot_dir -- \
-    --noconfirm \
-    --syncdeps \
-    --holdver \
-    --skipinteg \
-    --clean \
-    --log \
+  makechrootpkg -c -r $chroot_dir \
     || return 2
 
   sign_pkg
