@@ -379,10 +379,17 @@ function push () {
   [[ -n $@ ]] || { usage; exit 1 }
 
   # parse flags and remove from args
-  zparseopts -D -E -F - l:=list -list:=list || return 1
+  zparseopts -D -E -F - \
+    l:=list -list:=list \
+    h:=host -host:=host \
+    d:=dir -dir:=dir \
+    || return 1
   local end_opts=$@[(i)(--|-)]
   set -- "${@[0,end_opts-1]}" "${@[end_opts+1,-1]}"
   
+  [[ -n $host ]] && push_login=$host[2]
+  [[ -n $dir ]] && push_path=$dir[2]
+
   cd $working_dir || return 1
 
   # packages from args
