@@ -70,15 +70,23 @@ function echo_err () { echo "${fg_bold[red]}==> ERROR: ${fg_bold[white]}${@}${re
 function usage() {
   echo "Usage: ${ZSH_ARGZERO:t} <mode> <pkg> [--list <file>]"
   echo
-  echo "  modes: (one required)"
-  echo "    setup                 manage chroot"
-  echo "    list                  list available packages"
-  echo "    fetch <pkg(s)>        fetch package(s)"
-  echo "    build <pkg(s)>        build package(s)"
-  echo "    push  <pkg(s)>        push package(s) to repo"
+  echo "  fetch <pkg(s)>          Fetch package(s)"
+  echo "    -l, --list  <file>    List of packages to work on"
+  echo  
+  echo "  build <pkg(s)>          Build package(s)"
+  echo "    -l, --list  <file>    List of packages to work on"
   echo
-  echo "  global arguments: (optional)"
-  echo "      -l, --list  <file>  list of packages to work on"
+  echo "  push  <pkg(s)>          Push package(s) to repo"
+  echo "    -l, --list  <file>    List of packages to work on"
+  echo  
+  echo "  list                    List available packages"
+  echo "     -b, --built          Filter built packages"
+  echo "     -d, --dirty          Filter dirty packages"
+  echo "     -g, --git            Filter git packages"
+  echo  
+  echo "  setup                   Manage chroot"
+  echo "     -C, --chroot         Create chroot environment"
+  echo "     -U, --update         Manualy update chroot"
   echo
 }
 
