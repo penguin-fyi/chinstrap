@@ -71,44 +71,53 @@ function usage() {
   echo "Usage: ${ZSH_ARGZERO:t} <mode> <pkg> [--list <file>]"
   echo
   echo "  fetch <pkg(s)>          Fetch package(s)"
-  echo "    -l, --list  <file>    List of packages to work on"
+  echo "    -l, --list <file>     List of packages to work on"
   echo  
   echo "  build <pkg(s)>          Build package(s)"
-  echo "    -l, --list  <file>    List of packages to work on"
+  echo "    -l, --list <file>     List of packages to work on"
   echo
   echo "  push  <pkg(s)>          Push package(s) to repo"
-  echo "    -l, --list  <file>    List of packages to work on"
-  echo "    -h, --host  <host>    Login for remote host"
-  echo "    -d, --dir   <dir>     Path on remote host"
+  echo "    -l, --list <file>     List of packages to work on"
+  echo "    -h, --host <host>     Login for remote host"
+  echo "    -d, --dir <dir>       Path on remote host"
   echo  
   echo "  list                    List available packages"
-  echo "     -b, --built          Filter built packages"
-  echo "     -d, --dirty          Filter dirty packages"
-  echo "     -g, --git            Filter git packages"
+  echo "    -b, --built           Filter built packages"
+  echo "    -d, --dirty           Filter dirty packages"
+  echo "    -g, --git             Filter git packages"
   echo  
-  echo "  setup                   Manage chroot"
-  echo "     -C, --chroot         Create chroot environment"
-  echo "     -U, --update         Manualy update chroot"
+  echo "  config                  Manage chroot"
+  echo "    -C, --chroot          Create chroot environment"
+  echo "    -U, --update          Manualy update chroot"
+  echo "    -d, --dir             "
+  echo "    -m, --makepkg         Location of makepkg config (use with -C)"
+  echo "    -p, --pacman          Location of pacman config (use with -C)"
   echo
 }
 
 ##
-## SETUP MODE
+## CONFIG MODE
 ##
 
-# setup() - setup chinstrap
-# args (only one):
-#   -C  --chroot  initialize chroot
-#   -U  --update  update chroot
-function setup () {
+# config() - setup chinstrap
+function config () {
   [[ -n $@ ]] || { usage; return 1 }
 
   # parse flags and remove from args
-  zparseopts -D -E -F - C=mode -chroot=mode || return 1
+  zparseopts -D -E -F - \
+    C=mode -chroot=mode \
+    U=mode -update=mode \
+    d:=dir -dir:=dir \
+    m:=makepkg -makepkg:makepkg \
+    p:=pacman -pacman:pacman \
+    || return 1
+
   local end_opts=$@[(i)(--|-)]
   set -- "${@[0,end_opts-1]}" "${@[end_opts+1,-1]}"
-  
-  cd $working_dir || return 1
+
+  [[ -n $dir && -d $dir[2] ]] && chroot_dir=$dir[2]
+  [[ -n $makepkg && -f $makepkg[2] ]] && makepkg_conf=$makepkg[2]
+  [[ -n $pacman && -f $pacman[2] ]] && pacman_conf=$pacman[2]
 
   case $mode in 
     -C | --chroot ) create_chroot ;;
@@ -125,9 +134,11 @@ function create_chroot () {
   local dest=$chroot_dir/root
   if [[ ! -d $dest ]]
   then
+    echo_msg "Creating chroot environment: $chroot_dir"
+    exit
     mkarchroot \
-      -C $pacman_conf \
       -M $makepkg_conf \
+      -C $pacman_conf \
       $dest base-devel \
       || exit 2
   fi
@@ -451,7 +462,7 @@ function main ()
   local args=(${@[2,-1]})
 
   case "$mode" in
-    fetch | build | list | push | setup ) $mode $args ;;
+    fetch | build | list | push | config ) $mode $args ;;
     -h | --help | ? | * ) usage ;;
   esac
 }
