@@ -78,6 +78,8 @@ function usage() {
   echo
   echo "  push  <pkg(s)>          Push package(s) to repo"
   echo "    -l, --list  <file>    List of packages to work on"
+  echo "    -h, --host  <host>    Login for remote host"
+  echo "    -d, --dir   <dir>     Path on remote host"
   echo  
   echo "  list                    List available packages"
   echo "     -b, --built          Filter built packages"
