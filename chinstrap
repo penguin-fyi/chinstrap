@@ -135,7 +135,6 @@ function create_chroot () {
   if [[ ! -d $dest ]]
   then
     echo_msg "Creating chroot environment: $chroot_dir"
-    exit
     mkarchroot \
       -M $makepkg_conf \
       -C $pacman_conf \
@@ -154,12 +153,7 @@ function update_chroot () {
     || exit 2
 }
 
-
 # list() - list packages in $working_dir
-# args (only one):
-#   -b  --built   filter built packages
-#   -d  --dirty   filter dirty packages
-#   -g  --git     filter git packages
 function list () {
 
   # parse flags and remove from args
@@ -168,6 +162,7 @@ function list () {
     b=filter -built=filter \
     d=filter -dirty=filter \
     || return 1
+
   local end_opts=$@[(i)(--|-)]
   set -- "${@[0,end_opts-1]}" "${@[end_opts+1,-1]}"
 
@@ -219,9 +214,6 @@ function list () {
 }
 
 # fetch() - fetch PKGBUILD(s)
-# args:
-#   <pkg> [<pkg>]       packages to fetch
-#   -l | --list <file>  list of packages to fetch
 function fetch () {
   [[ -n $@ ]] || { usage; return 1 }
 
@@ -366,10 +358,8 @@ function prepare_srcinfo () {
 }
 
 # build_pkg() - build individual package
-build_pkg()
 function build_pkg () {
   local pkg=$1
-
   cd $pkg || return 1
 
   echo_inf "Building $pkg..."
