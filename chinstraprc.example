@@ -12,14 +12,11 @@
 ## custom makepkg.conf
 #makepkg_conf="$working_dir/configs/makepkg.conf"
 
-## directory to cache temporary files (will be removed)
-#temp_dir="/tmp/chinstrap"
-
-## base url to AUR
+## base URL to AUR
 #aur_url="https://aur.archlinux.org"
 
-## AUR package list
-#aur_list="packages.gz"
+## AUR RPC URL
+#aur_rpc="$aur_url/rpc?v=5&"
 
 ## GPG key to sign packages (required)
 #gpg_key="1234567890ABCDEF"
