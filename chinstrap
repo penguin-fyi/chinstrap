@@ -1,10 +1,7 @@
 #!/usr/bin/env zsh
-
-##
-## chinstrap build tool
-##
-## deps: jq, bash, curl, gpg, pacman, mkarchroot, makechrootpkg
-##
+#
+# chinstrap build tool
+# deps: jq, bash, curl, gpg, pacman, mkarchroot, makechrootpkg
 
 # load modules
 zmodload zsh/zutil
@@ -33,24 +30,19 @@ declare -g push_auto=${push_auto:-false}
 function config () {
   [[ -n $@ ]] || { usage; return 1 }
 
-  # parse flags...
   zparseopts -D -E -F - \
     C=mode -chroot=mode \
     U=mode -update=mode \
-    d:=dir -dir:=dir \
+    d:=w_dir -dir:=w_dir \
     m:=makepkg -makepkg:=makepkg \
     p:=pacman -pacman:=pacman \
     || return 1
 
-  # and remove from args
   local end_opts=$@[(i)(--|-)]
   set -- "${@[0,end_opts-1]}" "${@[end_opts+1,-1]}"
-
-  # fail on leftover args
   test -z $@ || { usage; return 1 }
 
-  # overwrite config
-  [[ -n $dir ]] && chroot_dir=$dir[2]
+  [[ -n $w_dir ]] && chroot_dir=$w_dir[2]
   [[ -f $makepkg[2] ]] && makepkg_conf=$makepkg[2]
   [[ -f $pacman[2] ]] && pacman_conf=$pacman[2]
 
@@ -61,12 +53,8 @@ function config () {
   esac
 }
 
-# create_chroot() - initialize chroot environment
 function create_chroot () {
-
-  # create chroot base directory
-  if [[ -d $chroot_dir ]]
-  then
+  if [[ -d $chroot_dir ]]; then
     echo_wrn "Path exists: $chroot_dir"
   else
     echo_inf "Creating base directory: $chroot_dir"
@@ -74,9 +62,7 @@ function create_chroot () {
       || sudo mkdir -p $chroot_dir
   fi
 
-  # create clean root copy
-  if [[ -d $chroot_dir/root ]]
-  then
+  if [[ -d $chroot_dir/root ]]; then
     echo_err "Existing chroot environment detected"
     exit 1
   else
@@ -95,14 +81,15 @@ function update_chroot () {
     || { echo_err "Invalid chroot_dir: $chroot_dir"; exit 1 }
 
   echo_msg "Updating chroot environment..."
-  arch-nspawn $chroot_dir/root pacman -Syu --noconfirm \
+  arch-nspawn \
+    -M $makepkg_conf \
+    -C $pacman_conf \
+    $chroot_dir/root pacman -Syu --noconfirm \
     || { echo_err "Failed to update chroot: $chroot_dir"; exit 2 }
 }
 
 # list() - list packages in $working_dir
 function list () {
-
-  # parse flags...
   zparseopts -D -E -F - \
     g=filter -git=filter \
     a=filter -aur=filter \
@@ -110,123 +97,99 @@ function list () {
     d:=dir -dir:=dir \
     || return 1
 
-  # and remove from args
   local end_opts=$@[(i)(--|-)]
   set -- "${@[0,end_opts-1]}" "${@[end_opts+1,-1]}"
-
-  # overwrite config
-  [[ -n $dir && -d $dir[2] ]] && working_dir=$dir[2]
-
-  # fail on leftover args
   test -z $@ || { usage; return 1 }
+
+  [[ -n $dir && -d $dir[2] ]] && working_dir=$dir[2]
 
   echo_msg "Listing packages in $working_dir..."
   cd $working_dir || return 1
 
   local -a packages
-  local -a filter_list
+  local -a filtered
 
-  # get initial list
-  for item in *
-  do
+  for item in *; do
     [[ -d $item ]] || continue
     cd $item || return 1
     is_package \
       && packages=($packages $item)
     cd $working_dir || return 1
   done
-  unset item
 
-  # filter list
-  if [[ -n $filter ]]
-  then
+  if [[ -n $filter ]]; then
     echo_inf "Filter: $filter"
-    for pkg in $packages
-    do
-      cd $pkg || return 1
+    for package in $packages; do
+      cd $package || return 1
       case $filter in
         -a | --aur)
-          is_aur $pkg \
-            && filter_list=($filter_list $pkg)
+          is_aur $package \
+            && filtered=($filtered $package)
           ;;
         -b | --built)
           is_built \
-            && filter_list=($filter_list $pkg)
+            && filtered=($filtered $package)
           ;;
         -g | --git)
           is_git \
-            && filter_list=($filter_list $pkg)
+            && filtered=($filtered $package)
           ;;
       esac
       cd $working_dir || return 1
     done
-    packages=($filter_list)
+    packages=($filtered)
   fi
-  unset pkg
 
-  # print formatted list
-  local pkg
-  for pkg in $packages
-  do
+  for pkg in $packages; do
     cd $pkg || return 1
     local info=($(get_pkg_info))
     echo_itm "${fg_bold[white]}$info[1]" \
       "${fg[green]}$info[2]-$info[3]${reset_color}"
     cd $working_dir || return 1
   done
-  unset pkg
 }
 
 # get_pkg_info() - print PKGBUILD name version and release
 get_pkg_info () {
   bash -c 'source PKGBUILD; echo $pkgname $pkgver $pkgrel' \
-    || return 2
+    || return 1
 }
 
 # is_package() - check if path contains PKGBUILD
 function is_package () {
-  [[ -f PKGBUILD ]] || return 2
+  [[ -f PKGBUILD ]] || return 1
 }
 
 # is_aur() - check if pkg is in AUR
 function is_aur () {
   [[ $(curl -s "$aur_rpc&type=info&arg=$1" | jq -r '.resultcount') == 1 ]] \
-    || return 2
+    || return 1
 }
 
 # is_built() - check if path contains built package
 function is_built () {
-  for file in $(makepkg --packagelist)
-  do
-    [[ -f $file ]] || return 2
+  for file in $(makepkg --packagelist); do
+    [[ -f $file ]] || return 1
   done
 }
 
 # is_git() - check if path is git repo
 function is_git () {
-  [[ -d .git ]] || return 2
+  [[ -d .git ]] || return 1
 }
 
 # fetch() - fetch PKGBUILD(s)
 function fetch () {
   [[ -n $@ ]] || { usage; return 1 }
-
-  # parse flags...
   zparseopts -D -E -F - l:=list -list:=list || return 1
-
-  # and remove from args
   local end_opts=$@[(i)(--|-)]
   set -- "${@[0,end_opts-1]}" "${@[end_opts+1,-1]}"
   
-  # packages from args
   local -aU packages=($@)
+  local pkg_list=$list[-1]
 
-  # packages from list
-  local pkglist=$list[-1]
-  if [[ -f $pkglist ]]
-  then
-    for line in ${(f)mapfile[$pkglist]}
-    do
+  if [[ -f $pkg_list ]]; then
+    for line in ${(f)mapfile[$pkg_list]}; do
       read first _ <<< $line
       [[ ! $first == '#'* ]] && packages=($packages $first)
     done
@@ -235,20 +198,16 @@ function fetch () {
   echo_msg "Fetching PKGBUILD(s)..."
   cd $working_dir || return 1
 
-  # fetch packages
-  for pkg in $packages
-  do
-    if is_aur $pkg
-    then
-      if [[ ! -d $pkg ]]
-      then
-        clone_pkg $pkg \
-          || echo_err "$pkg sync failed"
+  for package in $packages; do
+    if is_aur $package; then
+      if [[ ! -d $package ]]; then
+        clone_pkg $package \
+          || echo_err "$package sync failed"
       else
-        echo_wrn "$pkg exists"
+        echo_wrn "$package exists"
       fi
     else
-      echo_wrn "$pkg unavailable"
+      echo_wrn "$package unavailable"
     fi
   done
 }
@@ -259,30 +218,19 @@ function clone_pkg () {
     && echo_bul "Cloned $1"
 }
 
-##
-## BUILD MODE
-##
-
 # build() - build PKGBUILD(s)
 function build () {
   [[ -n $@ ]] || { usage; return 1 }
-
-  # parse flags...
   zparseopts -D -E -F - l:=list -list:=list || return 1
 
-  # and remove from args
   local end_opts=$@[(i)(--|-)]
   set -- "${@[0,end_opts-1]}" "${@[end_opts+1,-1]}"
   
-  # packages from args
   local -aU packages=($@)
+  local pkg_list=$list[-1]
 
-  # packages from list
-  local pkglist=$list[-1]
-  if [[ -f $pkglist ]]
-  then
-    for line in ${(f)mapfile[$pkglist]}
-    do
+  if [[ -f $pkg_list ]]; then
+    for line in ${(f)mapfile[$pkg_list]}; do
       read first _ <<< "$line"
       [[ ! $first == '#'* ]] \
         && packages=($packages $first)
@@ -291,13 +239,10 @@ function build () {
 
   cd $working_dir || return 1
 
-  # build packages
-  for pkg in $packages
-  do
-    cd $pkg || return 1
-    if is_package
-    then
-      echo_inf "Building $pkg..."
+  for package in $packages; do
+    cd $package || return 1
+    if is_package; then
+      echo_inf "Building $package..."
       update_chroot
       prepare_git
       prepare_checksums
@@ -307,7 +252,7 @@ function build () {
       [[ $push_auto = true ]] \
         && upload_pkg
     else
-      echo_err "$pkg not found!"
+      echo_err "$package not found!"
     fi
     cd $working_dir || return 1
   done
@@ -346,45 +291,32 @@ function build_pkg () {
 # sign_pkg() - crate detached sig for pkg
 function sign_pkg () {
   local packages=($(makepkg --packagelist))
-  for pkg in $packages
-  do
-    gpg --detach-sign --quiet $pkg \
-      || { echo_err "Failed to sign package: $pkg"; return 2 }
+  for package in $packages; do
+    gpg --detach-sign --quiet $package \
+      || { echo_err "Failed to sign package: $package"; return 2 }
   done
 }
-
-##
-## PUSH MODE
-##
 
 # push() - push package(s)
 function push () {
   [[ -n $@ ]] || { usage; exit 1 }
-
-  # parse flags...
   zparseopts -D -E -F - \
     l:=list -list:=list \
     h:=host -host:=host \
     d:=dir -dir:=dir \
     || return 1
 
-  # and remove from args
   local end_opts=$@[(i)(--|-)]
   set -- "${@[0,end_opts-1]}" "${@[end_opts+1,-1]}"
   
-  # overwrite config
   [[ -n $host ]] && push_login=$host[2]
   [[ -n $dir ]] && push_path=$dir[2]
 
-  # packages from args
   local -aU packages=($@)
+  local pkg_list=$list[-1]
 
-  # packages from list
-  local pkglist=$list[-1]
-  if [[ -f $pkglist ]]
-  then
-    for line in ${(f)mapfile[$pkglist]}
-    do
+  if [[ -f $pkg_list ]]; then
+    for line in ${(f)mapfile[$pkg_list]}; do
       read first _ <<< "$line"
       [[ ! $first == '#'* ]] && packages=($packages $first)
     done
@@ -392,11 +324,10 @@ function push () {
 
   cd $working_dir || return 1
 
-  for pkg in $packages
-  do
-    cd $pkg || return 1
+  for package in $packages; do
+    cd $package || return 1
     is_built && upload_pkg \
-      || echo_err "$pkg not found!"
+      || echo_err "$package not found!"
     cd $working_dir || return 1
   done
   unset pkg
@@ -404,8 +335,7 @@ function push () {
 
 # upload_pkg() - upload package(s) to repo
 function upload_pkg () {
-  for pkg in $(makepkg --packagelist)
-  do 
+  for pkg in $(makepkg --packagelist); do
     echo_msg "Pushing $(pwd) to remote..."
     rsync -av $pkg $pkg.sig $push_login:$push_path \
       || { echo_err "Failed to sync: $pkg" }
@@ -449,9 +379,7 @@ function usage() {
   echo
 }
 
-##
 ## main()
-##
 function main ()
 {
   local mode=${@[1]}
@@ -463,4 +391,4 @@ function main ()
   esac
 }
 
-main "$@" || exit 1
+main $@
