@@ -25,7 +25,7 @@
 #push_login="user@host.domain.url"
 
 ## path on remote host
-#push_path="/srv/http/repo/penguin/x86_64"
+#push_dir="/srv/http/repo/penguin/x86_64"
 
 ## auto push on build
 #push_auto=true
