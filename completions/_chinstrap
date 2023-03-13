@@ -1,0 +1,79 @@
+#compdef chinstrap
+
+# zsh completions for chinstrap
+# https://github.com/penguin-fyi/chinstrap
+
+_chinstrap_commands() {
+  local _commands=(
+    "chroot:Manage chroot environment"
+    "list:List packages in WORKING_DIR"
+    "clone:Clone PKGBUILD(s) from AUR"
+    "build:Build package(s)"
+    "push:Push packages(s) to remote host"
+  )
+
+  _describe 'chinstrap commands' _commands
+}
+
+_chinstrap_global_options=()
+
+_chinstrap_options=(
+  "(-)"{-h,--help}"[Show help message]"
+)
+
+_chinstrap_chroot=(
+  {-C,--chroot}"[Path to CHROOT_DIR]:WDIR:_files -/"
+  {-M,--makepkg}"[Path to custom makepkg.conf]:File:_files"
+  {-P,--pacman}"[Path to custom pacman.conf]:File:_files"
+  "--create[Create chroot environment]"
+  "--update[Update chroot environment]"
+  "--remove[Remove chroot environment]"
+)
+
+_chinstrap_list=(
+  {-W,--working-dir}"[Directory containing PKGBUILD(s)]:WDIR:_files -/"
+  {-a,--aur}"[Filter AUR packages]"
+  {-b,--built}"[Filter built packages]"
+  {-g,--git}"[Filter git packages]"
+)
+
+_chinstrap_clone=(
+  {-W,--working-dir}"[Directory containing PKGBUILD(s)]:WDIR:_files -/"
+  {-l,--pkg-list}"[Path to package list]:File:_files"
+  "*:Package:_files -/"
+)
+
+_chinstrap_build=(
+  {-C,--chroot-dir}"[Directory containing chroot environment]:WDIR:_files -/"
+  {-W,--working-dir}"[Directory containing PKGBUILD(s)]:WDIR:_files -/"
+  {-P,--push-dir}"[Directory to upload files to on remote]:Remote directory:"
+  {-k,--gpg-key}"[GPG key used to sign package(s)]:Key:"
+  {-l,--pkg-list}"[Path to package list]:List:_files"
+  "--login[Login to remote (user@host)]:Login:"
+  "--push[Push built package(s) to remote]"
+  "*:Package:_files -/"
+)
+
+_chinstrap_push=(
+  {-W,--working-dir}"[Directory containing PKGBUILD(s)]:WDIR:_files -/"
+  {-P,--push-dir}"[Directory to upload files to on remote]:Remote directory:"
+  {-l,--pkg-list}"[Path to package list]:File:_files"
+  "--login[Login to remote (user@host)]:Login:"
+  "*:Package:_files -/"
+)
+
+typeset -A opt_args
+local context state line curcontext="$curcontext"
+
+_arguments \
+  $_chinstrap_options \
+  '1: :_chinstrap_commands' \
+  '*::args:->args'
+
+case $words[1] in
+  chroot) _arguments $_chinstrap_global_options $_chinstrap_chroot ;;
+  list) _arguments $_chinstrap_global_options $_chinstrap_list ;;
+  clone) _arguments $_chinstrap_global_options $_chinstrap_clone ;;
+  build) _arguments $_chinstrap_global_options $_chinstrap_build ;;
+  push) _arguments $_chinstrap_global_options $_chinstrap_push ;;
+esac
