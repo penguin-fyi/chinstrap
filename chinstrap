@@ -27,7 +27,7 @@ declare -g MAKEPKG_CONF=${makepkg_conf:="$working_dir/configs/makepkg.conf"}
 declare -g AUR_URL=${aur_url:="https://aur.archlinux.org"}
 declare -g AUR_RPC=${aur_rpc:="$aur_url/rpc?v=5&"}
 declare -g GPG_KEY=${gpg_key:=false}
-declare -g PUSH_LOGIN=${push_login:="user@host.domain.url"}
+declare -g PUSH_LOGIN=${push_login:="user@host.domain.tld"}
 declare -g PUSH_DIR=${push_dir:="/srv/http/repo/custom/x86_64"}
 declare -g PUSH_AUTO=${push_auto:-false}
 
@@ -276,15 +276,15 @@ function do_clone () {
   cd $WORKING_DIR || return 1
 
   for package in $packages; do
-    if is_aur $package; then
-      if [[ ! -d $package ]]; then
+    if [[ ! -d $package ]]; then
+      if is_aur $package; then
         clone_aur $package \
           || echo_err "$package sync failed"
       else
-        echo_wrn "$package exists"
+        echo_wrn "$package unavailable"
       fi
     else
-      echo_wrn "$package unavailable"
+      echo_wrn "$package exists"
     fi
   done
 }
