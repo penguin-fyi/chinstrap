@@ -10,9 +10,9 @@ autoload colors && colors
 # Load config file
 () {
   local -a cfg=(
-    $(pwd)/.chinstraprc
-    $HOME/.config/chinstraprc
-    /etc/chinstraprc
+    $(pwd)/.chinstraprc       # Project
+    $HOME/.config/chinstraprc # User
+    /etc/chinstraprc          # System
   )
   for rc in $cfg; do
     [[ -f $rc ]] && { source $rc; break }
@@ -58,15 +58,15 @@ function do_env () {
   case $env_mode in
     --create)
       confirm "Creating chroot: $chroot_dir" \
-        && create_chroot
+        && { create_chroot || exit $? }
     ;;
     --update)
       confirm "Updating chroot: $chroot_dir" \
-        && update_chroot
+        && { update_chroot || exit $? }
     ;;
     --remove)
       confirm "Removing chroot: $chroot_dir" \
-        && remove_chroot
+        && { remove_chroot || exit $? }
     ;;
     ? | *) usage ;;
   esac
@@ -81,7 +81,7 @@ function do_env () {
 #######################################
 function create_chroot () {
   [[ -d $chroot_dir ]] \
-    && { echo_err "Existing chroot environment detected!"; exit 1 }
+    && { echo_err "Existing chroot environment detected!"; return 1 }
 
   mkdir -p $chroot_dir > /dev/null 2>&1 \
     || sudo mkdir -p $chroot_dir
@@ -90,7 +90,7 @@ function create_chroot () {
     -M $makepkg_conf \
     -C $pacman_conf \
     $chroot_dir/root base-devel \
-    || { echo_err "Failed to create chroot at $chroot_dir"; exit 2 }
+    || { echo_err "Failed to create chroot at $chroot_dir"; return 2 }
 }
 
 #######################################
@@ -102,13 +102,13 @@ function create_chroot () {
 #######################################
 function update_chroot () {
   [[ -d $chroot_dir ]] \
-    || { echo_err "Failed to locate chroot at $chroot_dir"; exit 1 }
+    || { echo_err "Failed to locate chroot at $chroot_dir"; return 1 }
 
   arch-nspawn \
     -M $makepkg_conf \
     -C $pacman_conf \
     $chroot_dir/root pacman -Syu --noconfirm \
-    || { echo_err "Failed to update chroot at $chroot_dir"; exit 2 }
+    || { echo_err "Failed to update chroot at $chroot_dir"; return 2 }
 }
 
 #######################################
@@ -118,10 +118,10 @@ function update_chroot () {
 #######################################
 function remove_chroot () {
   [[ -d $chroot_dir ]] \
-    || { echo_err "Failed to locate chroot at $chroot_dir"; exit 1 }
+    || { echo_err "Failed to locate chroot at $chroot_dir"; return 1 }
 
   sudo rm -r $chroot_dir > /dev/null 2>&1 \
-    || { echo_err "Failed to remove chroot at $chroot_dir"; exit 2 }
+    || { echo_err "Failed to remove chroot at $chroot_dir"; return 2 }
 }
 
 #######################################
@@ -259,7 +259,7 @@ function do_clone () {
 
   local end_opts=$@[(i)(--|-)]
   set -- "${@[0,end_opts-1]}" "${@[end_opts+1,-1]}"
-  
+
   [[ -n $_pkg_list ]] && pkg_list=$_pkg_list[2]
   [[ -n $_build_dir ]] && build_dir=$_build_dir[2]
  
@@ -323,7 +323,7 @@ function do_make () {
 
   local end_opts=$@[(i)(--|-)]
   set -- "${@[0,end_opts-1]}" "${@[end_opts+1,-1]}"
-  
+
   [[ -n $_build_dir ]] && build_dir=$_build_dir[2]
   [[ -n $_chroot_dir ]] && chroot_dir=$_chroot_dir[2]
   [[ -n $_gpg_key ]] && gpg_key=$_gpg_key[2]
@@ -349,13 +349,13 @@ function do_make () {
     cd $package || return 1
     if is_package; then
       echo_inf "Building $package..."
-      update_chroot
-      update_pkg
-      update_checksums
-      build_pkg
-      sign_pkg
-      [[ $auto_sync = true ]] \
-        && upload_pkg
+      update_chroot || break
+      update_pkg || break
+      update_checksums || break
+      build_pkg || break
+      sign_pkg || break
+      $auto_sync \
+        && { upload_pkg || break }
     else
       echo_err "$package not found!"
     fi
@@ -370,7 +370,7 @@ function do_make () {
 #   2 on git pull failed.
 #######################################
 function update_pkg () {
-  is_git || return 1
+  is_git || return 0
   echo_bul "Updating PKGBUILD..."
   git pull --quiet \
     || { echo_err "Failed to update PKGBUILD"; return 2 }
@@ -436,7 +436,7 @@ function do_sync () {
 
   local end_opts=$@[(i)(--|-)]
   set -- "${@[0,end_opts-1]}" "${@[end_opts+1,-1]}"
-  
+
   [[ -n $_pkg_list ]] && pkg_list=$_pkg_list[2]
   [[ -n $_repo_dir ]] && repo_dir=$_repo_dir[2]
   [[ -n $_repo_login ]] && repo_login=$_repo_login[2]
