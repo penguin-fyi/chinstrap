@@ -21,9 +21,9 @@ autoload colors && colors
 
 # Set variables
 declare -g build_dir=${build_dir:=$(pwd)}
-declare -g chroot_dir=${chroot_dir:="$build_dir/chroot/"}
-declare -g pacman_conf=${pacman_conf:="$build_dir/configs/pacman.conf"}
-declare -g makepkg_conf=${makepkg_conf:="$build_dir/configs/makepkg.conf"}
+declare -g chroot_dir=${chroot_dir:="$build_dir/.chroot/"}
+declare -g pacman_conf=${pacman_conf:="$build_dir/.etc/pacman.conf"}
+declare -g makepkg_conf=${makepkg_conf:="$build_dir/.etc/makepkg.conf"}
 declare -g aur_url=${aur_url:="https://aur.archlinux.org"}
 declare -g aur_rpc=${aur_rpc:="$aur_url/rpc?v=5&"}
 declare -g gpg_key=${gpg_key:-false}

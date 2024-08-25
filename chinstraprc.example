@@ -4,13 +4,13 @@
 #build_dir="$HOME/pkgbuilds"
 
 ## directory containing chroot
-#chroot_dir="$build_dir/chroot"
+#chroot_dir="$build_dir/.chroot"
 
 ## custom pacman.conf
-#pacman_conf="$build_dir/configs/pacman.conf"
+#pacman_conf="$build_dir/.etc/pacman.conf"
 
 ## custom makepkg.conf
-#makepkg_conf="$build_dir/configs/makepkg.conf"
+#makepkg_conf="$build_dir/.etc/makepkg.conf"
 
 ## base URL to AUR
 #aur_url="https://aur.archlinux.org"
@@ -25,7 +25,7 @@
 #repo_login="user@host.domain.tld"
 
 ## path on remote host
-#repo_dir="/srv/http/repo/penguin/x86_64"
+#repo_dir="/srv/http/repo/$USER/x86_64"
 
 ## auto push on build
 #auto_sync=true
