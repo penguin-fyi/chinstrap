@@ -1,12 +1,11 @@
 #!/usr/bin/env zsh
 #
 # `chinstrap` is a tool for cloning (AUR), building (clean chroot),
-# and (optionally) uploading packages for use in third-party repos
-#
-# deps: jq, bash, curl, rsync, gpg, pacman, mkarchroot, makechrootpkg
+# and (optionally) uploading Arch Linux packages for use in
+# third-party repos
 #
 # The MIT License (MIT)
-# Copyright (c) $COPYRIGHT_YEAR $COPYRIGHT_HOLDERS
+# Copyright (c) 2021-2024 Jeff M. Hubbard
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
 # in the Software without restriction, including without limitation the rights
@@ -51,6 +50,8 @@ declare -g gpg_key=${gpg_key:-false}
 declare -g repo_login=${repo_login:="user@host.domain.tld"}
 declare -g repo_dir=${repo_dir:="/srv/http/repo/$USER/x86_64"}
 declare -g auto_sync=${auto_sync:-false}
+
+declare -ag upload_list
 
 #######################################
 # Command: env
@@ -204,7 +205,7 @@ function do_list () {
 
   for pkg in $packages; do
     cd $pkg || return 1
-    local info=($(get_pkg_info))
+    local info=($(get_package_info))
     echo_txt "${fg_bold[white]}$info[1]" \
       "${fg[green]}$info[2]-$info[3]${reset_color}"
     cd $build_dir || return 1
@@ -218,7 +219,7 @@ function do_list () {
 # Returns:
 #   1 on error.
 #######################################
-function get_pkg_info () {
+function get_package_info () {
   bash -c 'source PKGBUILD; echo $pkgname $pkgver $pkgrel' \
     || return 1
 }
@@ -371,12 +372,14 @@ function do_make () {
     if is_package; then
       echo_inf "Building $package..."
       update_chroot || break
-      update_pkg || break
+      update_package || break
       update_checksums || break
-      build_pkg || break
-      sign_pkg || break
-      $auto_sync \
-        && { upload_pkg || break }
+      build_package || break
+      sign_package || break
+      if $auto_sync; then
+        sync_package || break
+      fi
+
     else
       echo_err "$package not found!"
     fi
@@ -390,7 +393,7 @@ function do_make () {
 #   1 on is_git check failed.
 #   2 on git pull failed.
 #######################################
-function update_pkg () {
+function update_package () {
   is_git || return 0
   echo_bul "Updating PKGBUILD..."
   git pull --quiet \
@@ -415,8 +418,8 @@ function update_checksums () {
 # Returns:
 #   2 on makechrootpkg failed.
 #######################################
-function build_pkg () {
-  local info=($(get_pkg_info))
+function build_package () {
+  local info=($(get_package_info))
   echo_inf "Building $info[1] $info[2]-$info[3]..."
   makechrootpkg -c -r $chroot_dir \
     || return 2
@@ -430,7 +433,7 @@ function build_pkg () {
 #   1 on gpg_key not set.
 #   2 on gpg failed.
 #######################################
-function sign_pkg () {
+function sign_package () {
   [[ -n $gpg_key ]] || return 1
   local packages=($(makepkg --packagelist))
   for package in $packages; do
@@ -478,7 +481,7 @@ function do_sync () {
   for package in $packages; do
     cd $package || return 1
     if is_built; then
-      upload_pkg
+      sync_package
     else
       echo_err "$package not found!"
     fi
@@ -489,20 +492,32 @@ function do_sync () {
 #######################################
 # Upload package(s) to repo.
 # Globals:
+#   upload_list
+# Returns:
+#   None, just print error
+#   1 on sync_list()
+#######################################
+function sync_package () {
+  for file in $(makepkg --packagelist); do
+    [[ -f $file ]] && upload_list=($upload_list "$file")
+    [[ -f $file.sig ]] && upload_list=($upload_list "$file.sig")
+  done
+
+  sync_list || return 1
+}
+
+#######################################
+# Upload list of package(s) to repo.
+# Globals:
+#   upload_list
 #   repo_login
 #   repo_dir
 # Returns:
-#   None, just print error
+#   1 on .
 #######################################
-function upload_pkg () {
-  local -a filelist
-  for pkg in $(makepkg --packagelist); do
-    [[ -f $pkg ]] && filelist=($filelist "$pkg")
-    [[ -f $pkg.sig ]] && filelist=($filelist "$pkg.sig")
-  done
-
-  rsync -av $filelist $repo_login:$repo_dir \
-    || { echo_err "Failed to sync: $pkg" }
+function sync_list () {
+  rsync -av $upload_list $repo_login:$repo_dir \
+    || return 1
 }
 
 #######################################
