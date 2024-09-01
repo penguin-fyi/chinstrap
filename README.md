@@ -1,45 +1,60 @@
 # chinstrap
+
 `chinstrap` is a tool to retrieve, build, and publish [clean-chroot](https://wiki.archlinux.org/title/DeveloperWiki:Building_in_a_clean_chroot) packages for Arch Linux.
 
 ## Installation
-#### Single-user
-1. Clone repo
-    ```bash
-    git clone https://github.com/penguin-fyi/chinstrap && cd chinstrap
-    ```
-2. Install `chinstrap`
-    ```bash
-    install -Dm 755 chinstrap ~/bin/chinstrap
-    ```
 
-#### System-wide
+### Single-user
+
 1. Clone repo
-    ```bash
-    git clone https://github.com/penguin-fyi/chinstrap && cd chinstrap
-    ```
+
+   ```bash
+   git clone https://github.com/penguin-fyi/chinstrap && cd chinstrap
+   ```
+
 2. Install `chinstrap`
-    ```bash
-    install -Dm 755 chinstrap /usr/bin/chinstrap`
-    ```
+
+   ```bash
+   install -Dm 755 chinstrap ~/bin/chinstrap
+   ```
+
+### System-wide
+
+1. Clone repo
+
+   ```bash
+   git clone https://github.com/penguin-fyi/chinstrap && cd chinstrap
+   ```
+
+2. Install `chinstrap`
+
+   ```bash
+   install -Dm 755 chinstrap /usr/bin/chinstrap`
+   ```
+
 3. Install `zsh` completions (optional)
-    ```bash
-    install -Dm 644 completions/_chinstrap /usr/share/zsh/site-functions/_chinstrap
-    ```
+
+   ```bash
+   install -Dm 644 completions/_chinstrap /usr/share/zsh/site-functions/_chinstrap
+   ```
+
 4. Install `zsh` plugin (optional)
-    ```bash
-    install -Dm 644 plugins/chinstrap.plugin.zsh /usr/share/zsh/plugins/chinstrap/chinstrap.plugin.zsh
-    ```
+
+   ```bash
+   install -Dm 644 plugins/chinstrap.plugin.zsh /usr/share/zsh/plugins/chinstrap/chinstrap.plugin.zsh
+   ```
 
 ## Configuration
+
 ```bash
 ## directory containing pkgbuilds
 build_dir="$HOME/pkgbuilds"
 ## directory containing chroot
-chroot_dir="$build_dir/chroot"
+chroot_dir="$build_dir/.chroot"
 ## custom pacman.conf
-pacman_conf="$build_dir/configs/pacman.conf"
+pacman_conf="$build_dir/.etc/pacman.conf"
 ## custom makepkg.conf
-makepkg_conf="$build_dir/configs/makepkg.conf"
+makepkg_conf="$build_dir/.etc/makepkg.conf"
 ## base URL to AUR
 aur_url="https://aur.archlinux.org"
 ## AUR RPC URL
@@ -49,12 +64,13 @@ gpg_key="1234567890ABCDEF"
 ## login on remote host
 repo_login="user@host.domain.tld"
 ## path on remote host
-repo_dir="/srv/http/repo/penguin/x86_64"
+repo_dir="/srv/http/repo/archlinux/x86_64"
 ## auto push on build
 auto_sync=true
 ```
 
 ## Usage
+
 ```bash
 Usage: chinstrap <command> [<pkg>] [--opt <arg>]
 
@@ -91,4 +107,3 @@ Usage: chinstrap <command> [<pkg>] [--opt <arg>]
     --login <user@host>       Login for repo (user@host)
 
 ```
-
